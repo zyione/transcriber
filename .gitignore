@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Input, output, and archived history
+input/*
+!input/.gitkeep
+output/*
+!output/.gitkeep
+history-input/*
+!history-input/.gitkeep
+
+# Audio / video files
+*.mp3
+*.mp4
+*.wav
+*.m4a
+*.flac
+*.aac
+*.ogg

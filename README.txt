@@ -1,14 +1,7 @@
-pip install torch torchvision torchaudio
-
 pip install openai-whisper
 
+# For GPU (CUDA) acceleration:
+pip uninstall torch torchvision torchaudio -y
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu126
 
-if not using GPU
-    pip uninstall torch torchvision torchaudio -y
-
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-    or 
-
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
