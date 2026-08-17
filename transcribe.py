@@ -1,8 +1,10 @@
 import os
 import shutil
 from datetime import datetime
+
 import torch
-import whisper
+from faster_whisper import WhisperModel
+from tqdm import tqdm
 
 
 def ensure_ffmpeg():
@@ -32,6 +34,9 @@ def format_timestamp(seconds: float) -> str:
 
 def transcribe_batch():
     ensure_ffmpeg()
+
+    # Use all available CPU cores when running without a GPU
+    torch.set_num_threads(os.cpu_count())
 
     # Base directories relative to script location
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -68,10 +73,11 @@ def transcribe_batch():
         print("Running on CPU (Install CUDA to enable GPU!)")
     print("==================================\n")
 
-    # Load Whisper model once for batch processing
+    # Load Whisper model once for batch processing (faster-whisper / CTranslate2 backend)
     print("[INFO] Loading Whisper model 'medium'...")
     device = "cuda" if cuda_available else "cpu"
-    model = whisper.load_model("medium", device=device)
+    compute_type = "float16" if cuda_available else "int8"
+    model = WhisperModel("medium", device=device, compute_type=compute_type)
     print("[INFO] Model loaded successfully.\n")
 
     print(f"[INFO] Found {len(files_to_process)} file(s) to process.\n")
@@ -82,25 +88,45 @@ def transcribe_batch():
         output_file_name = f"{base_name}-converted.txt"
         output_file_path = os.path.join(output_dir, output_file_name)
 
+        # Skip files that were already transcribed (e.g. resuming after an interruption)
+        if os.path.exists(output_file_path):
+            print(f"[{idx}/{len(files_to_process)}] [SKIP] Already transcribed: {file_name}")
+            continue
+
         print(f"[{idx}/{len(files_to_process)}] Processing: {file_name}")
         start_time = datetime.now()
 
         try:
             # Force Taglish/Filipino transcription
-            result = model.transcribe(
+            segments_gen, info = model.transcribe(
                 input_file_path,
-                verbose=True,
                 language="tl",
-                task="transcribe"
+                task="transcribe",
+                vad_filter=True,  # skip silent/non-speech stretches: faster + fewer hallucinations
             )
 
-            # Write transcript with timestamps
-            with open(output_file_path, "w", encoding="utf-8") as f:
-                for segment in result["segments"]:
-                    start_ts = format_timestamp(segment["start"])
-                    end_ts = format_timestamp(segment["end"])
-                    text = segment["text"].strip()
+            duration = info.duration or 0
+            tmp_output_path = output_file_path + ".tmp"
+
+            with open(tmp_output_path, "w", encoding="utf-8") as f, \
+                 tqdm(total=round(duration, 1), unit="s", desc="  Transcribing", leave=False) as pbar:
+                last_end = 0.0
+                for segment in segments_gen:
+                    start_ts = format_timestamp(segment.start)
+                    end_ts = format_timestamp(segment.end)
+                    text = segment.text.strip()
                     f.write(f"[{start_ts} --> {end_ts}] {text}\n")
+
+                    # Advance the progress bar by however much audio this segment covered
+                    pbar.update(round(segment.end - last_end, 1))
+                    last_end = segment.end
+
+                # Close out the bar in case VAD trimmed trailing silence
+                if duration and last_end < duration:
+                    pbar.update(round(duration - last_end, 1))
+
+            # Atomic write: only replace the real output once writing succeeded fully
+            os.replace(tmp_output_path, output_file_path)
 
             # Move processed input to history-input
             history_file_path = os.path.join(history_dir, file_name)
@@ -120,6 +146,10 @@ def transcribe_batch():
             print("----------------------------------------------\n")
 
         except Exception as e:
+            # Clean up any partial tmp file left behind by a failed run
+            tmp_output_path = output_file_path + ".tmp"
+            if os.path.exists(tmp_output_path):
+                os.remove(tmp_output_path)
             print(f"[ERROR] Failed to process {file_name}: {e}\n")
 
     print("\n========== ALL FILES PROCESSED ==========\n")
