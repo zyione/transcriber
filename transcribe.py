@@ -50,7 +50,11 @@ def transcribe_batch():
     os.makedirs(history_dir, exist_ok=True)
 
     # Supported audio/video extensions
-    valid_extensions = (".mp3", ".mp4")
+    valid_extensions = (
+        ".mp3", ".mp4", ".m4a", ".wav", ".aac",
+        ".ogg", ".flac", ".wma", ".opus", ".mkv",
+        ".mov", ".webm", ".m4v"
+    )
     files_to_process = [
         f for f in os.listdir(input_dir)
         if os.path.isfile(os.path.join(input_dir, f)) and f.lower().endswith(valid_extensions)
@@ -58,7 +62,8 @@ def transcribe_batch():
 
     if not files_to_process:
         print("\n==================================")
-        print(f"[INFO] No .mp3 or .mp4 files found in: {input_dir}")
+        print(f"[INFO] No supported media files found in: {input_dir}")
+        print(f"[INFO] Supported formats: {', '.join(valid_extensions)}")
         print(f"[INFO] Please place your media files in the 'input' folder and run the script again.")
         print("==================================\n")
         return
