@@ -1,0 +1,6 @@
+# Keep this pair together: PyAV 19 rejects faster-whisper's metadata_errors option.
+faster-whisper==1.2.1
+av==18.1.0
+torch
+tqdm
+imageio-ffmpeg
